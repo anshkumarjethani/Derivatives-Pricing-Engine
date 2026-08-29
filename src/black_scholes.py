@@ -141,3 +141,91 @@ def rho_put(S, K, r, sigma, T, q=0):
     d1 = (np.log(S / K) + (r - q + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
     return -K * T * np.exp(-r * T) * norm.cdf(-d2)
+
+def delta_call_numerical(S, K, r, sigma, T, q=0, h=0.01):
+    """
+    Delta of a European call, computed via central finite difference
+    (bump-and-revalue) instead of the analytic formula. Should closely
+    match delta_call() — this is used to validate the analytic result.
+
+    h : the bump size for S. Small enough to approximate a derivative,
+        large enough to avoid floating-point precision issues.
+    """
+    price_up = black_scholes_call(S + h, K, r, sigma, T, q)
+    price_down = black_scholes_call(S - h, K, r, sigma, T, q)
+
+    return (price_up - price_down) / (2 * h)
+
+def gamma_numerical(S, K, r, sigma, T, q=0, h=0.01):
+    """
+    Gamma of a European option, computed via the central finite-difference
+    second-derivative formula (bump-and-revalue) instead of the analytic
+    formula. Should closely match gamma() — used to validate the analytic result.
+
+    h : the bump size for S.
+    """
+    price_up = black_scholes_call(S + h, K, r, sigma, T, q)
+    price_now = black_scholes_call(S, K, r, sigma, T, q)
+    price_down = black_scholes_call(S - h, K, r, sigma, T, q)
+
+    return (price_up - 2 * price_now + price_down) / h**2
+
+def vega_numerical(S, K, r, sigma, T, q=0, h=0.01):
+    """
+    Vega of a European option, computed via central finite difference
+    (bump-and-revalue) instead of the analytic formula. Should closely
+    match vega() — used to validate the analytic result.
+
+    Note: same as the analytic vega(), this returns the change in price
+    per 1.00 (100%) change in sigma. Divide by 100 for the per-1%-move
+    convention.
+
+    h : the bump size for sigma.
+    """
+    price_up = black_scholes_call(S, K, r, sigma + h, T, q)
+    price_down = black_scholes_call(S, K, r, sigma - h, T, q)
+
+    return (price_up - price_down) / (2 * h)
+
+def theta_numerical(S, K, r, sigma, T, q=0, h=0.001):
+    """
+    Theta of a European call option, computed via central finite
+    difference (bump-and-revalue) instead of the analytic formula.
+    Should closely match theta_call() — used to validate the analytic
+    result.
+
+    Note: matches theta_call()'s convention — returned as the annualized
+    change in price per year of time passing (typically negative).
+
+    h : the bump size for T. Kept smaller than the default used for S
+        or sigma, since T is often close to 1 or smaller — a large h
+        would represent too large a relative change to give an accurate
+        approximation, especially for short-dated options.
+    """
+    price_up = black_scholes_call(S, K, r, sigma, T + h, q)
+    price_down = black_scholes_call(S, K, r, sigma, T - h, q)
+
+    return (price_up - price_down) / (2 * h)
+
+
+def rho_numerical(S, K, r, sigma, T, q=0, h=0.0001):
+    """
+    Rho of a European call option, computed via central finite
+    difference (bump-and-revalue) instead of the analytic formula.
+    Should closely match rho_call() — used to validate the analytic
+    result.
+
+    Note: same as the analytic rho_call(), this returns the change in
+    price per 1.00 (100%) change in r. Divide by 100 for the
+    per-1%-move convention.
+
+    h : the bump size for r. Kept small since realistic interest rates
+        are themselves small decimals (e.g. 0.05 for 5%).
+    """
+    price_up = black_scholes_call(S, K, r + h, sigma, T, q)
+    price_down = black_scholes_call(S, K, r - h, sigma, T, q)
+
+    return (price_up - price_down) / (2 * h)
+
+    
+    
