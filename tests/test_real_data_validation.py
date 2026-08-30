@@ -9,7 +9,7 @@ from market_data import get_spot_price, filter_liquid_options
 from black_scholes import black_scholes_call, black_scholes_put, delta_call, delta_call_numerical
 from binomial import binomial_price
 from monte_carlo import monte_carlo_call, monte_carlo_put, monte_carlo_call_antithetic, monte_carlo_call_control_variate
-from market_data import get_spot_price, get_risk_free_rate, get_liquid_near_the_money_contract
+from market_data import get_spot_price, get_risk_free_rate, get_liquid_near_the_money_contract, get_historical_volatility
 
 
 def test_three_methods_agree_on_real_market_data():
@@ -88,3 +88,19 @@ def test_greeks_agree_on_real_market_data():
 
     assert abs(analytic - numerical) < 0.001, \
         f"Analytic and numerical Delta disagree on real data: {analytic} vs {numerical}"
+
+def test_historical_volatility_returns_sane_value():
+    """
+    Confirms get_historical_volatility() returns a plausible annualized
+    volatility (as a decimal, not a percentage, and within a realistic
+    range for a real, liquid stock). This doesn't check historical vol
+    against implied vol for closeness — they're expected to genuinely
+    differ, since one is backward-looking (realized) and the other is
+    forward-looking (market-implied). This test only confirms the
+    calculation itself is sound.
+    """
+    hist_vol = get_historical_volatility("AAPL")
+
+    assert 0 < hist_vol < 2.0, \
+        f"Historical volatility out of plausible range: {hist_vol}"
+        

@@ -119,6 +119,33 @@ def get_liquid_near_the_money_contract(ticker_symbol, option_side='calls', min_d
 
     return S, K, sigma, T
 
+def get_historical_volatility(ticker_symbol, lookback_days= 60):
+    """
+    Compute annualized historical (realized) volatility from a stock's
+    recent daily price history — an independent volatility estimate,
+    not derived from any option's price, unlike implied volatility.
+
+    Parameters:
+    ticker_symbol : e.g. 'AAPL'
+    lookback_days : number of recent trading days to use
+
+    Returns:
+    volatility : annualized historical volatility (decimal, e.g. 0.25 for 25%)
+    """
+    ticker = yf.Ticker(ticker_symbol)
+    history = ticker.history(period=f"{lookback_days}d")
+
+    if history.empty or len(history) < 2:
+        raise ValueError(f"Not enough price history found for '{ticker_symbol}'.")
+
+    closes = history['Close']
+    log_returns = np.log(closes / closes.shift(1)).dropna()
+
+    daily_std = log_returns.std()
+    annualised_volatality = daily_std * np.sqrt(252)
+
+    return float(annualised_volatality)
+
 
 
                   

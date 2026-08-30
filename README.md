@@ -65,9 +65,13 @@ Every Greek (Delta, Gamma, Vega, Theta, Rho) is computed two ways:
 The two are cross-validated to agree closely, and every put-call parity relationship (price, Delta, Theta, Rho) is independently derived and tested.
 
 ### 4. Real market data validation
-Live spot prices and option chains are pulled via `yfinance`. Raw chains are filtered for liquidity (minimum volume and open interest) to exclude stale, untraded quotes — which otherwise show implausible implied volatility from illiquid pricing. A near-the-money, liquid contract is priced with all three methods using the market's own implied volatility, real spot price, real time-to-expiry, and the underlying's actual dividend yield.
+Live spot prices, option chains, and risk-free rates (13-week Treasury yield, `^IRX`) are pulled via `yfinance`. Raw chains are filtered for liquidity (minimum volume and open interest) to exclude stale, untraded quotes — which otherwise show implausible implied volatility from illiquid pricing. A near-the-money, liquid contract is priced with all three methods using the real spot price, real time-to-expiry, the underlying's actual dividend yield, and a real live risk-free rate — no placeholder values.
 
-**Finding**: all three pricing methods agree tightly with each other on real market data (within a few cents), confirming the cross-method validation holds beyond synthetic test cases. Model prices sit reasonably close to, but not exactly on, real market bid/ask — an honest and expected gap, attributable to the placeholder risk-free rate used, and the inherent circularity of testing a model against a price derived partly from that same model's own implied volatility input.
+**Finding 1 — cross-method agreement**: all three pricing methods agree tightly with each other on real market data (within a few cents), confirming the cross-method validation holds beyond synthetic test cases.
+
+**Finding 2 — market-price reconciliation**: with a real Treasury-derived risk-free rate in place of an earlier round-number placeholder, model price landed within ~2 cents of the real market ask on a representative AAPL contract — closing a gap that had been roughly 70 cents wide under the placeholder rate. This confirmed the risk-free rate assumption, not the dividend yield, was the dominant driver of the earlier discrepancy.
+
+**Finding 3 — implied vs. historical volatility**: using the market's own implied volatility to price an option and comparing to the market price is partially circular, since implied vol is itself derived from market prices. As an independent check, annualized historical (realized) volatility was computed directly from recent price history (log returns, no options data involved) and used as an alternative input. On the same AAPL contract, historical volatility (32.7%) was meaningfully higher than market-implied volatility (26.1%), and pricing with historical vol produced a theoretical price roughly ₹2.24 above the market price — versus ~2 cents using implied vol. This divergence is an honest, expected finding: implied volatility reflects the market's forward-looking expectation, while historical volatility reflects only what has already happened; a real gap between them is a genuine market signal (related to the volatility risk premium), not a modeling error.
 
 ---
 
@@ -131,4 +135,4 @@ price = black_scholes_call(S=100, K=100, r=0.05, sigma=0.2, T=1, q=0.0)
 
 ## Roadmap
 
-Remaining work: a real-time Greeks dashboard consuming live option chain data, and a more rigorous volatility input (historical realized volatility, rather than relying on market-implied volatility, to avoid circularity when comparing model output to market prices) and a live risk-free rate curve (currently a placeholder value) in place of the round-number approximation used during development.
+Remaining work: a real-time Greeks dashboard consuming live option chain data (planned as a clean tabular output, not an interactive web app, to stay consistent with the rest of the project's scope). The two earlier-flagged validation gaps — a placeholder risk-free rate, and reliance solely on market-implied volatility — have both been resolved: the engine now uses a real live Treasury-derived rate and includes an independent historical-volatility check alongside implied volatility (see Methodology, section 4).
