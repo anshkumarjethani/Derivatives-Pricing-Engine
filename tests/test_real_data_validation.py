@@ -9,47 +9,7 @@ from market_data import get_spot_price, filter_liquid_options
 from black_scholes import black_scholes_call, black_scholes_put, delta_call, delta_call_numerical
 from binomial import binomial_price
 from monte_carlo import monte_carlo_call, monte_carlo_put, monte_carlo_call_antithetic, monte_carlo_call_control_variate
-
-def _get_liquid_near_the_money_contract(ticker_symbol, option_side='calls', min_days=20):
-    """
-    Shared helper: fetches a real option chain, filters for liquidity,
-    and returns the contract nearest the current spot price, along with
-    spot price and time to expiry. Used by all real-data tests below to
-    avoid repeating the same fetch/filter/select logic in each one.
-    """
-    ticker = yf.Ticker(ticker_symbol)
-    S = get_spot_price(ticker_symbol)
-
-    expiries = ticker.options
-    assert len(expiries) > 0, "No option expiries returned — data may be unavailable"
-
-    chosen_expiry = None
-    for expiry in expiries:
-        expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
-        days_out = (expiry_date - datetime.now()).days
-        if days_out >= min_days:
-            chosen_expiry = expiry
-            break
-
-    assert chosen_expiry is not None, f"No expiry found with at least {min_days} days to expiration"
-
-    chain = ticker.option_chain(chosen_expiry)
-    raw_contracts = chain.calls if option_side == 'calls' else chain.puts
-    liquid_contracts = filter_liquid_options(raw_contracts, min_volume=10, min_open_interest=100)
-
-    assert len(liquid_contracts) > 0, f"No sufficiently liquid {option_side} found for this expiry"
-
-    liquid_contracts = liquid_contracts.copy()
-    liquid_contracts['distance_from_spot'] = abs(liquid_contracts['strike'] - S)
-    nearest = liquid_contracts.sort_values('distance_from_spot').iloc[0]
-
-    K = float(nearest['strike'])
-    sigma = float(nearest['impliedVolatility'])
-
-    expiry_date = datetime.strptime(chosen_expiry, '%Y-%m-%d')
-    T = (expiry_date - datetime.now()).days / 365
-
-    return S, K, sigma, T
+from market_data import get_spot_price, get_risk_free_rate, get_liquid_near_the_money_contract
 
 
 def test_three_methods_agree_on_real_market_data():
@@ -61,9 +21,9 @@ def test_three_methods_agree_on_real_market_data():
     every pricing approach in the project, checked against real,
     unseen market data rather than fixed test numbers.
     """
-    S, K, sigma, T = _get_liquid_near_the_money_contract("AAPL", option_side='calls')
+    S, K, sigma, T = get_liquid_near_the_money_contract("AAPL", option_side='calls')
 
-    r = 0.05
+    r = get_risk_free_rate()
     q = 0.0034  # AAPL's approximate current dividend yield
 
     bs_price = black_scholes_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
@@ -92,9 +52,9 @@ def test_three_methods_agree_on_real_market_data_puts():
     test's job is confirming no put-specific issue on real inputs, which
     3 methods proves as well as 5 would.
     """
-    S, K, sigma, T = _get_liquid_near_the_money_contract("AAPL", option_side='puts')
+    S, K, sigma, T = get_liquid_near_the_money_contract("AAPL", option_side='puts')
 
-    r = 0.05
+    r = get_risk_free_rate()
     q = 0.0034
 
     bs_price = black_scholes_put(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
@@ -118,9 +78,9 @@ def test_greeks_agree_on_real_market_data():
     independently-derived calculation methods still agree on messy,
     real data, not just clean round test numbers.
     """
-    S, K, sigma, T = _get_liquid_near_the_money_contract("AAPL", option_side='calls')
+    S, K, sigma, T = get_liquid_near_the_money_contract("AAPL", option_side='calls')
 
-    r = 0.05
+    r = get_risk_free_rate()
     q = 0.0034
 
     analytic = delta_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
