@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np 
 from scipy.stats import norm
 
-def binomial_price(S, K, r, sigma, T, N, q=0, option_type='call', american=True):
+def binomial_price(S, K, r, sigma, T, N, q=0, option_type='call', american=False):
     """
     Price a European or American option using the Cox-Ross-Rubinstein
     binomial tree model.

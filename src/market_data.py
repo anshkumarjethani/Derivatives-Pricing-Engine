@@ -43,8 +43,9 @@ def filter_liquid_options(options_df, min_volume=1, min_open_interest=1, min_imp
     has_volume = options_df['volume'].fillna(0) >= min_volume
     has_open_interest = options_df['openInterest'].fillna(0) >= min_open_interest
     has_valid_iv = options_df['impliedVolatility'].fillna(0) >= min_implied_vol
+    has_real_quote = options_df['bid'].fillna(0) > 0
 
-    filtered_df = options_df[(has_volume | has_open_interest) & has_valid_iv]
+    filtered_df = options_df[(has_volume | has_open_interest) & has_valid_iv & has_real_quote]
 
     return filtered_df
 
@@ -71,20 +72,17 @@ def get_risk_free_rate():
 
     return float(rate_percent) / 100
 
-def get_liquid_near_the_money_contract(ticker_symbol, option_side='calls', min_days=20):
+def get_liquid_near_the_money_contract(ticker_symbol, option_side='calls', min_days=20, max_moneyness_pct=0.15):
     """
-    Fetches a real option chain, filters for liquidity, and returns the
-    contract nearest the current spot price, along with spot price and
-    time to expiry.
+    Fetches a real option chain, filters for liquidity, and returns a
+    genuinely near-the-money contract (within max_moneyness_pct of spot),
+    trying successive expiries until one qualifies.
 
-    Parameters:
-    ticker_symbol : e.g. 'AAPL'
-    option_side   : 'calls' or 'puts'
-    min_days      : minimum days to expiry required (avoids picking
-                     contracts with almost no time value left)
-
-    Returns:
-    S, K, sigma, T : spot price, strike, implied volatility, time to expiry (years)
+    max_moneyness_pct : maximum allowed distance from spot, as a
+                         fraction of spot (0.15 = within 15% of spot
+                         price) — excludes deep ITM/OTM contracts where
+                         American early exercise or extreme intrinsic
+                         value make cross-method comparisons unfair.
     """
     ticker = yf.Ticker(ticker_symbol)
     S = get_spot_price(ticker_symbol)
@@ -93,33 +91,41 @@ def get_liquid_near_the_money_contract(ticker_symbol, option_side='calls', min_d
     if len(expiries) == 0:
         raise ValueError(f"No option expiries found for '{ticker_symbol}'.")
 
-    chosen_expiry = None
-    for expiry in expiries:
-        expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
-        days_out = (expiry_date - datetime.now()).days
-        if days_out >= min_days:
-            chosen_expiry = expiry
-            break
+    candidate_expiries = [
+        e for e in expiries
+        if (datetime.strptime(e, '%Y-%m-%d') - datetime.now()).days >= min_days
+    ]
 
-    if chosen_expiry is None:
+    if len(candidate_expiries) == 0:
         raise ValueError(f"No expiry found with at least {min_days} days to expiration.")
 
-    chain = ticker.option_chain(chosen_expiry)
-    raw_contracts = chain.calls if option_side == 'calls' else chain.puts
-    liquid_contracts = filter_liquid_options(raw_contracts, min_volume=10, min_open_interest=100)
+    max_distance = S * max_moneyness_pct
 
-    if len(liquid_contracts) == 0:
-        raise ValueError(f"No sufficiently liquid {option_side} found for '{ticker_symbol}' at expiry {chosen_expiry}.")
+    for chosen_expiry in candidate_expiries:
+        chain = ticker.option_chain(chosen_expiry)
+        raw_contracts = chain.calls if option_side == 'calls' else chain.puts
+        liquid_contracts = filter_liquid_options(raw_contracts, min_volume=10, min_open_interest=100)
 
-    liquid_contracts = liquid_contracts.copy()
-    liquid_contracts['distance_from_spot'] = abs(liquid_contracts['strike'] - S)
-    nearest = liquid_contracts.sort_values('distance_from_spot').iloc[0]
+        if len(liquid_contracts) == 0:
+            continue
 
-    K = float(nearest['strike'])
-    sigma = float(nearest['impliedVolatility'])
-    T = (datetime.strptime(chosen_expiry, '%Y-%m-%d') - datetime.now()).days / 365
+        liquid_contracts = liquid_contracts.copy()
+        liquid_contracts['distance_from_spot'] = abs(liquid_contracts['strike'] - S)
 
-    return S, K, sigma, T
+        near_the_money = liquid_contracts[liquid_contracts['distance_from_spot'] <= max_distance]
+
+        if len(near_the_money) == 0:
+            continue
+
+        nearest = near_the_money.sort_values('distance_from_spot').iloc[0]
+
+        K = float(nearest['strike'])
+        sigma = float(nearest['impliedVolatility'])
+        T = (datetime.strptime(chosen_expiry, '%Y-%m-%d') - datetime.now()).days / 365
+
+        return S, K, sigma, T
+
+    raise ValueError(f"No expiry with a genuinely near-the-money, liquid {option_side} found for '{ticker_symbol}'.")
 
 def get_historical_volatility(ticker_symbol, lookback_days= 60):
     """
@@ -128,7 +134,7 @@ def get_historical_volatility(ticker_symbol, lookback_days= 60):
     not derived from any option's price, unlike implied volatility.
 
     Parameters:
-    ticker_symbol : e.g. 'AAPL'
+    ticker_symbol : e.g. '^SPX'
     lookback_days : number of recent trading days to use
 
     Returns:

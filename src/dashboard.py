@@ -15,7 +15,7 @@ def build_greeks_dashboard(ticker_symbol, option_side='calls', min_days=20, q=0.
     contract in a real, live option chain.
 
     Parameters:
-    ticker_symbol : e.g. 'AAPL'
+    ticker_symbol : e.g. '^SPX'
     option_side   : 'calls' or 'puts'
     min_days      : minimum days to expiry to include (skips near-zero
                     time-to-expiry contracts, which can behave oddly
