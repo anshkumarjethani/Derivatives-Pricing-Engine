@@ -26,7 +26,7 @@ def get_spot_price(ticker):
 
     return float(price)
 
-def filter_liquid_options(options_df, min_volume=1, min_open_interest=1):
+def filter_liquid_options(options_df, min_volume=1, min_open_interest=1, min_implied_vol=0.01):
     """
     Filter an option chain DataFrame (from yfinance) to keep only rows
     with genuine trading activity, removing stale/untraded quotes that
@@ -40,10 +40,12 @@ def filter_liquid_options(options_df, min_volume=1, min_open_interest=1):
     Returns:
     filtered_df : DataFrame containing only liquid rows
     """
-    has_volume = options_df['volume'].fillna(0)>= min_volume
-    has_open_interet = options_df['openInterest'].fillna(0)>= min_open_interest
+    has_volume = options_df['volume'].fillna(0) >= min_volume
+    has_open_interest = options_df['openInterest'].fillna(0) >= min_open_interest
+    has_valid_iv = options_df['impliedVolatility'].fillna(0) >= min_implied_vol
 
-    filtered_df = options_df[has_volume & has_open_interet]
+    filtered_df = options_df[(has_volume | has_open_interest) & has_valid_iv]
+
     return filtered_df
 
 def get_risk_free_rate():
