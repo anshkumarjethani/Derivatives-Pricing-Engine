@@ -23,9 +23,9 @@ Every options desk needs a fast, trustworthy pricer to quote two-sided markets a
 | 3 | Monte Carlo simulator, plain + antithetic + control variates, calls and puts | ✅ Complete |
 | 4 | Real market data integration (live spot prices, option chains, liquidity filtering) | ✅ Complete |
 | 4 | Cross-method validation against live market data | ✅ Complete |
-| 5 | Real-time Greeks dashboard | ⏳ Planned |
+| 5 | Real-time Greeks dashboard (live table: price + all 5 Greeks per contract) | ✅ Complete |
 
-**33 automated tests passing** across pricing accuracy, Greeks, parity relationships, convergence behavior, variance-reduction techniques, and live real-market cross-validation.
+**35 automated tests passing** across pricing accuracy, Greeks, parity relationships, convergence behavior, variance-reduction techniques, and live real-market cross-validation.
 
 ---
 
@@ -65,13 +65,20 @@ Every Greek (Delta, Gamma, Vega, Theta, Rho) is computed two ways:
 The two are cross-validated to agree closely, and every put-call parity relationship (price, Delta, Theta, Rho) is independently derived and tested.
 
 ### 4. Real market data validation
-Live spot prices, option chains, and risk-free rates (13-week Treasury yield, `^IRX`) are pulled via `yfinance`. Raw chains are filtered for liquidity (minimum volume and open interest) to exclude stale, untraded quotes — which otherwise show implausible implied volatility from illiquid pricing. A near-the-money, liquid contract is priced with all three methods using the real spot price, real time-to-expiry, the underlying's actual dividend yield, and a real live risk-free rate — no placeholder values.
+Live spot prices, option chains, and risk-free rates (13-week Treasury yield, `^IRX`) are pulled via `yfinance`. Raw chains are filtered for liquidity — requiring real volume or open interest, a valid nonzero implied volatility, and a genuine nonzero bid — to exclude stale or broken quotes, which otherwise produce implausible prices and Greeks downstream. Contract selection also enforces a moneyness constraint and retries across successive expiries, since individual expiries can have thin or unreliable data even when others are healthy.
 
-**Finding 1 — cross-method agreement**: all three pricing methods agree tightly with each other on real market data (within a few cents), confirming the cross-method validation holds beyond synthetic test cases.
+The validation underlying is the **S&P 500 Index (`^SPX`)** — real index options, priced as European (matching their actual exchange convention), after initial testing on individual equity options (AAPL) surfaced several real data-quality issues not present in SPX's much deeper, more reliable market.
 
-**Finding 2 — market-price reconciliation**: with a real Treasury-derived risk-free rate in place of an earlier round-number placeholder, model price landed within ~2 cents of the real market ask on a representative AAPL contract — closing a gap that had been roughly 70 cents wide under the placeholder rate. This confirmed the risk-free rate assumption, not the dividend yield, was the dominant driver of the earlier discrepancy.
+**Finding 1 — cross-method agreement**: all three pricing methods agree tightly with each other on real market data (within a fraction of a percent), confirming the cross-method validation holds beyond synthetic test cases.
 
-**Finding 3 — implied vs. historical volatility**: using the market's own implied volatility to price an option and comparing to the market price is partially circular, since implied vol is itself derived from market prices. As an independent check, annualized historical (realized) volatility was computed directly from recent price history (log returns, no options data involved) and used as an alternative input. On the same AAPL contract, historical volatility (32.7%) was meaningfully higher than market-implied volatility (26.1%), and pricing with historical vol produced a theoretical price roughly ₹2.24 above the market price — versus ~2 cents using implied vol. This divergence is an honest, expected finding: implied volatility reflects the market's forward-looking expectation, while historical volatility reflects only what has already happened; a real gap between them is a genuine market signal (related to the volatility risk premium), not a modeling error.
+**Finding 2 — market-price reconciliation**: with a real Treasury-derived risk-free rate in place of an earlier round-number placeholder, model prices land within a small margin of real market bid/ask on representative contracts.
+
+**Finding 3 — implied vs. historical volatility**: using the market's own implied volatility to price an option and comparing to the market price is partially circular, since implied vol is itself derived from market prices. As an independent check, annualized historical (realized) volatility was computed directly from recent price history (log returns, no options data involved). The two estimates diverged meaningfully on the tested contract, an honest and expected finding — implied volatility reflects the market's forward-looking expectation, historical volatility reflects only what has already happened, and a real gap between them is a genuine market signal, not a modeling error.
+
+### 5. Real-time Greeks dashboard
+`build_greeks_dashboard()` pulls a live, liquid option chain for a given underlying and expiry, and computes theoretical price plus all five Greeks (Delta, Gamma, Vega, Theta, Rho) for every qualifying contract, alongside the real market bid/ask for direct comparison. Output is a clean, sorted table — deliberately built as a script/notebook-producible table rather than an interactive web app, consistent with the project's Python-only scope. Results are saved to `data/processed/` as CSV snapshots.
+
+On live SPX data, the dashboard reproduces the expected theoretical patterns exactly: Delta decreases monotonically from deep in-the-money toward out-of-the-money, and Gamma peaks near the at-the-money strikes — confirming the full pricing and Greeks stack holds up correctly on genuine, live market data, not just the synthetic test cases used during development.
 
 ---
 
@@ -133,6 +140,8 @@ price = black_scholes_call(S=100, K=100, r=0.05, sigma=0.2, T=1, q=0.0)
 
 ---
 
-## Roadmap
+## Project status
 
-Remaining work: a real-time Greeks dashboard consuming live option chain data (planned as a clean tabular output, not an interactive web app, to stay consistent with the rest of the project's scope). The two earlier-flagged validation gaps — a placeholder risk-free rate, and reliance solely on market-implied volatility — have both been resolved: the engine now uses a real live Treasury-derived rate and includes an independent historical-volatility check alongside implied volatility (see Methodology, section 4).
+All planned stages are complete: three cross-validated pricing methods, full analytic and numerical Greeks with parity checks, live market data integration with robust liquidity/data-quality filtering, real-rate and independent-volatility validation, and a live Greeks dashboard — all backed by 35 passing automated tests spanning synthetic and real-data cases.
+
+Possible future extensions (not required for the current scope): a broker-connected live data feed (e.g. for NSE-specific instruments, via Kite Connect or Groww's API) as a separate integration; path-dependent option support via the existing Monte Carlo engine; an interactive web dashboard as an alternative front-end to the current tabular output.

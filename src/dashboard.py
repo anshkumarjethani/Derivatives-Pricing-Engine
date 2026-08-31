@@ -53,4 +53,43 @@ def build_greeks_dashboard(ticker_symbol, option_side='calls', min_days=20, q=0.
     if len(liquid_contracts) == 0:
         raise ValueError(f"No sufficiently liquid {option_side} found for '{ticker_symbol}'.")
 
-    return S, r, T, chosen_expiry, liquid_contracts
+    rows = []
+    for _, contract in liquid_contracts.iterrows():
+        K = float(contract['strike'])
+        sigma = float(contract['impliedVolatility'])
+
+        if sigma <= 0:
+            continue
+
+        if option_side == 'calls':
+            price = black_scholes_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            delta = delta_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            theta = theta_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            rho = rho_call(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+        else:
+            price = black_scholes_put(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            delta = delta_put(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            theta = theta_put(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+            rho = rho_put(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+
+        gamma_val = gamma(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+        vega_val = vega(S=S, K=K, r=r, sigma=sigma, T=T, q=q)
+
+        rows.append({
+            'strike': K,
+            'market_bid': float(contract['bid']),
+            'market_ask': float(contract['ask']),
+            'model_price': round(price, 2),
+            'implied_vol': round(sigma, 4),
+            'delta': round(delta, 4),
+            'gamma': round(gamma_val, 6),
+            'vega': round(vega_val, 4),
+            'theta_daily': round(theta / 365, 4),
+            'rho': round(rho, 4),
+        })
+
+    dashboard = pd.DataFrame(rows)
+    dashboard = dashboard.sort_values('strike').reset_index(drop=True) 
+
+    return S, dashboard
+       
